@@ -11,7 +11,10 @@
 -- Portability :  portable
 --
 -----------------------------------------------------------------------------
-module Codec.Archive.Tar.Read (read, FormatError(..)) where
+{-# LANGUAGE FlexibleContexts #-}
+module Codec.Archive.Tar.Read (read, FormatError(..)
+      , conduitEntry
+      ) where
 
 import Codec.Archive.Tar.Types
 
@@ -25,9 +28,15 @@ import Control.Monad
 
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.Char8 as BS.Char8
+import qualified Data.ByteString as SBS
 import Data.ByteString.Lazy (ByteString)
 
 import Prelude hiding (read)
+import Data.Monoid  ((<>))
+import Data.Conduit
+import Data.Conduit.Binary as CB
+import Control.Monad.Error.Class
+import Control.Monad.Trans.Class (lift)
 
 
 -- | Errors that can be encountered when parsing a Tar archive.
@@ -63,6 +72,96 @@ instance Exception FormatError
 --
 read :: ByteString -> Entries FormatError
 read = unfoldEntries getEntry
+
+conduitEntry :: MonadError FormatError m => Conduit SBS.ByteString m Entry
+conduitEntry = go
+  where
+    go = do
+      done <- CB.take 1024 >>= read_entry
+      when (not done) $ go
+
+    read_entry bs = do
+      case bs of
+        _ | BS.length header < 512 -> throwError TruncatedArchive
+        _ | BS.head bs == 0        -> case BS.splitAt 1024 bs of
+            (end, trailing)
+              | BS.length end /= 1024         -> throwError ShortTrailer
+              | not (BS.all (== 0) end)       -> throwError BadTrailer
+              | not (BS.all (== 0) trailing)  -> throwError TrailingJunk
+              | otherwise                     -> return True
+
+        _ | otherwise               -> do
+
+            chksum <- either (const $ throwError NotTarFormat) return $ chksum_
+            when (not $ correctChecksum header chksum) $ do
+              throwError ChecksumIncorrect
+
+            -- These fields are partial, have to check them
+            format   <- format_;   mode     <- mode_;
+            uid      <- uid_;      gid      <- gid_;
+            size     <- size_;     mtime    <- mtime_;
+            devmajor <- devmajor_; devminor <- devminor_;
+
+            let padding = (512 - size) `mod` 512
+                req_len = 512 + size + padding
+            bs2 <- if BS.length bs < req_len
+                    then fmap (bs <>) $ CB.take $
+                                      fromIntegral $ req_len - BS.length bs
+                    else return bs
+
+            when (BS.length bs2 < req_len) $ do
+              throwError TruncatedArchive
+            let content = BS.take size (BS.drop 512 bs2)
+            let entry = Entry {
+                  entryTarPath     = TarPath name prefix,
+                  entryContent     = case typecode of
+                             '\0' -> NormalFile      content size
+                             '0'  -> NormalFile      content size
+                             '1'  -> HardLink        (LinkTarget linkname)
+                             '2'  -> SymbolicLink    (LinkTarget linkname)
+                             '3'  -> CharacterDevice devmajor devminor
+                             '4'  -> BlockDevice     devmajor devminor
+                             '5'  -> Directory
+                             '6'  -> NamedPipe
+                             '7'  -> NormalFile      content size
+                             _    -> OtherEntryType  typecode content size,
+                  entryPermissions = mode,
+                  entryOwnership   = Ownership uname gname uid gid,
+                  entryTime        = mtime,
+                  entryFormat      = format
+              }
+
+            yield entry
+            when (req_len < BS.length bs2) $ do
+              leftover $ BS.toStrict $ BS.drop req_len bs2
+            return False
+
+      where
+        header = BS.take 512 bs
+
+        either_to_throw = either throwError return
+        name       = getString   0 100 header
+        mode_      = either_to_throw $ getOct'    100   8 header
+        uid_       = either_to_throw $ getOct'    108   8 header
+        gid_       = either_to_throw $ getOct'    116   8 header
+        size_      = either_to_throw $ getOct'    124  12 header
+        mtime_     = either_to_throw $ getOct'    136  12 header
+        chksum_    = getOct'    148   8 header
+        typecode   = getByte   156     header
+        linkname   = getString 157 100 header
+        magic      = getChars  257   8 header
+        uname      = getString 265  32 header
+        gname      = getString 297  32 header
+        devmajor_  = either_to_throw $ getOct'    329   8 header
+        devminor_  = either_to_throw $ getOct'    337   8 header
+        prefix     = getString 345 155 header
+        -- trailing   = getBytes'  500  12 header
+        format_ = case magic of
+          "\0\0\0\0\0\0\0\0" -> return V7Format
+          "ustar\NUL00"      -> return UstarFormat
+          "ustar  \NUL"      -> return GnuFormat
+          _                  -> throwError UnrecognisedTarFormat
+
 
 getEntry :: ByteString -> Either FormatError (Maybe (Entry, ByteString))
 getEntry bs
@@ -137,10 +236,10 @@ getEntry bs
 -- trailing   = getBytes  500  12 header
 
    format_ = case magic of
-    "\0\0\0\0\0\0\0\0" -> return V7Format
-    "ustar\NUL00"      -> return UstarFormat
-    "ustar  \NUL"      -> return GnuFormat
-    _                  -> Error UnrecognisedTarFormat
+      "\0\0\0\0\0\0\0\0" -> return V7Format
+      "ustar\NUL00"      -> return UstarFormat
+      "ustar  \NUL"      -> return GnuFormat
+      _                  -> Error UnrecognisedTarFormat
 
 correctChecksum :: ByteString -> Int -> Bool
 correctChecksum header checksum = checksum == checksum'
@@ -154,6 +253,9 @@ correctChecksum header checksum = checksum == checksum'
                            BS.drop 156 header]
 
 -- * TAR format primitive input
+
+getOct' :: Integral a => Int64 -> Int64 -> ByteString -> Either FormatError a
+getOct' off len = partial . getOct off len
 
 getOct :: Integral a => Int64 -> Int64 -> ByteString -> Partial FormatError a
 getOct off len = parseOct

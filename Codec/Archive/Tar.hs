@@ -97,6 +97,7 @@ module Codec.Archive.Tar (
   -- This is because 'read' accepts common format variations while 'write'
   -- produces the standard format.
   read,
+  conduitEntry,
   write,
 
   -- * Packing and unpacking files to\/from internal representation

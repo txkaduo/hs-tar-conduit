@@ -1,4 +1,4 @@
-name:            tar
+name:            tar-conduit
 version:         0.4.1.0
 license:         BSD3
 license-file:    LICENSE
@@ -19,15 +19,16 @@ description:     This library is for working with \"@.tar@\" archive files. It
 build-type:      Simple
 cabal-version:   >=1.8
 
-source-repository head
-  type: darcs
-  location: http://code.haskell.org/tar/
-
 flag old-time
 
 library
   build-depends: base == 4.*, filepath,
                  bytestring, directory
+                 , conduit
+                 , conduit-extra
+                 , mtl
+                 , transformers
+
   if flag(old-time)
     build-depends: directory < 1.2, old-time
   else
@@ -45,6 +46,24 @@ library
     Codec.Archive.Tar.Pack
     Codec.Archive.Tar.Unpack
 
+  extensions:
+    DeriveDataTypeable
+
+  ghc-options: -Wall -fno-warn-unused-imports
+
+executable test-tar
+  main-is:        test-tar.hs
+  build-depends:    base
+                  , tar-conduit
+                  , bytestring
+                  , mtl
+                  , transformers
+                  , time
+                  , filepath
+                  , directory
+                  , conduit
+                  , conduit-extra
+                  , resourcet
   extensions:
     DeriveDataTypeable
 
