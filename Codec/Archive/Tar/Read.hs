@@ -30,6 +30,7 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.Char8 as BS.Char8
 import qualified Data.ByteString as SBS
 import Data.ByteString.Lazy (ByteString)
+import qualified Codec.Binary.UTF8.String as UTF8
 
 import Prelude hiding (read)
 import Data.Monoid  ((<>))
@@ -140,7 +141,7 @@ conduitEntry = go
         header = BS.take 512 bs
 
         either_to_throw = either throwError return
-        name       = getString   0 100 header
+        name       = getUtf8String   0 100 header
         mode_      = either_to_throw $ getOct'    100   8 header
         uid_       = either_to_throw $ getOct'    108   8 header
         gid_       = either_to_throw $ getOct'    116   8 header
@@ -148,13 +149,13 @@ conduitEntry = go
         mtime_     = either_to_throw $ getOct'    136  12 header
         chksum_    = getOct'    148   8 header
         typecode   = getByte   156     header
-        linkname   = getString 157 100 header
+        linkname   = getUtf8String 157 100 header
         magic      = getChars  257   8 header
-        uname      = getString 265  32 header
-        gname      = getString 297  32 header
+        uname      = getUtf8String 265  32 header
+        gname      = getUtf8String 297  32 header
         devmajor_  = either_to_throw $ getOct'    329   8 header
         devminor_  = either_to_throw $ getOct'    337   8 header
-        prefix     = getString 345 155 header
+        prefix     = getUtf8String 345 155 header
         -- trailing   = getBytes'  500  12 header
         format_ = case magic of
           "\0\0\0\0\0\0\0\0" -> return V7Format
@@ -297,6 +298,9 @@ getChars off len = BS.Char8.unpack . getBytes off len
 
 getString :: Int64 -> Int64 -> ByteString -> String
 getString off len = BS.Char8.unpack . BS.Char8.takeWhile (/='\0') . getBytes off len
+
+getUtf8String :: Int64 -> Int64 -> ByteString -> String
+getUtf8String off len = UTF8.decode . BS.unpack . BS.takeWhile (/= 0) . getBytes off len
 
 -- These days we'd just use Either, but in older versions of base there was no
 -- Monad instance for Either, it was in mtl with an anoying Error constraint.

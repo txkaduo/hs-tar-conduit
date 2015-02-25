@@ -28,6 +28,7 @@ library
                  , conduit-extra
                  , mtl
                  , transformers
+                 , utf8-string
 
   if flag(old-time)
     build-depends: directory < 1.2, old-time
@@ -64,6 +65,7 @@ executable test-tar
                   , conduit
                   , conduit-extra
                   , resourcet
+                  , utf8-string
   extensions:
     DeriveDataTypeable
 
