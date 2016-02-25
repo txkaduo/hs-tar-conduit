@@ -71,7 +71,7 @@ library
 
 executable test-tar
   main-is:        test-tar.hs
-  hs-source-dir:  test
+  hs-source-dirs: test
   build-depends:    base
                   , tar-conduit
                   , bytestring
