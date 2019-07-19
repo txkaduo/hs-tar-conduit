@@ -462,9 +462,18 @@ mapEntriesNoFail :: (Entry -> Entry) -> Entries e -> Entries e
 mapEntriesNoFail f =
   foldEntries (\entry -> Next (f entry)) Done Fail
 
+#if MIN_VERSION_base(4, 11, 0)
+instance Semigroup (Entries e) where
+  (<>) a b = foldEntries Next b Fail a
+
+instance Monoid (Entries e) where
+  mempty      = Done
+
+#else
 instance Monoid (Entries e) where
   mempty      = Done
   mappend a b = foldEntries Next b Fail a
+#endif
 
 instance Functor Entries where
   fmap f = foldEntries Next Done (Fail . f)

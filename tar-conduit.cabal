@@ -57,6 +57,7 @@ library
 
   extensions:
     DeriveDataTypeable
+    CPP
 
   ghc-options: -Wall -fno-warn-unused-imports
 

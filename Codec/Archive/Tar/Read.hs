@@ -74,7 +74,12 @@ instance Exception FormatError
 read :: ByteString -> Entries FormatError
 read = unfoldEntries getEntry
 
-conduitEntry :: MonadError FormatError m => Conduit SBS.ByteString m Entry
+conduitEntry :: MonadError FormatError m
+#if MIN_VERSION_conduit(1,3,0)
+             => ConduitT SBS.ByteString Entry m ()
+#else
+             => Conduit SBS.ByteString m Entry
+#endif
 conduitEntry = go
   where
     go = do

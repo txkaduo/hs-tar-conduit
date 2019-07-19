@@ -12,13 +12,13 @@ import Control.Monad.Trans.Resource
 
 testFile :: String -> IO ()
 testFile fp = do
-    err_or_names <- runExceptT $ runResourceT $
+    err_or_names <- runResourceT $ runExceptT $ runConduit $
                         (if fp == "-"
                             then sourceHandle stdin
                             else sourceFile fp)
-                        $= conduitEntry
-                        $= CL.map (fromTarPath . entryTarPath)
-                        $$ CL.consume
+                        .| conduitEntry
+                        .| CL.map (fromTarPath . entryTarPath)
+                        .| CL.consume
     case err_or_names of
         Left err -> do
             hPutStrLn stderr $ "error when reading file '" ++ fp
