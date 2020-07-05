@@ -327,4 +327,6 @@ instance Monad (Partial e) where
     return        = Ok
     Error m >>= _ = Error m
     Ok    x >>= k = k x
+#if !MIN_VERSION_base(4, 13, 0)
     fail          = error "fail @(Partial e)"
+#endif
